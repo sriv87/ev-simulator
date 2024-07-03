@@ -295,15 +295,20 @@ def initiate_V2G(n_V2G_Veh):
 
     # process startingTime and endingTime for each V2G vehicle
     v2g_startingTime = getArrivalTime(n_V2G_Veh)
+    #print('v2g starting time---', v2g_startingTime)
     condlist = [v2g_startingTime < 24, v2g_startingTime >= 24]
+    #print('condlist---', condlist)
     choicelist = [v2g_startingTime, v2g_startingTime - 24]
+    #print(choicelist)
     startingTime1 = np.select(condlist, choicelist)
     v2g_startingTime = np.int_(np.round(startingTime1)) # need to time 4!
-
+    #print(v2g_startingTime)
     temp_start=np.int_(np.round(startingTime1))
     temp_park_random=np.zeros(n_V2G_Veh)
     for i in range(n_V2G_Veh):
+        #print(parking_Duration)
         temp_park=parking_Duration[temp_start[i]-1]
+        #print('temp park---', temp_park)
         temp_park_random[i]=np.random.normal(temp_park,0.5,1)
     v2g_endingTime=temp_start+temp_park_random
     condlist= [v2g_endingTime<24, v2g_endingTime>=24]
@@ -331,20 +336,22 @@ def V2G_optimization():
     #define optimization variables
     veh_V2G=range(n_V2G_Veh)
     time_Interval=range(24)
-    chargeprofiles=lp.LpVariable.dicts('charging_profiles', ((i,j) for i in veh_V2G for j in time_Interval), lowBound=0, upBound=power_managed_Uppper)
+    chargeprofiles=lp.LpVariable.dicts('charging_profiles', ((i,j) for i in veh_V2G for j in time_Interval))
     chargestates=lp.LpVariable.dicts('charging_states', ((i,j) for i in veh_V2G for j in time_Interval), cat='Binary')
-    dischargeprofiles=lp.LpVariable.dicts('discharging_profiles', ((i,j) for i in veh_V2G for j in time_Interval), lowBound=power_V2G_Lower, upBound=0)
+    dischargeprofiles=lp.LpVariable.dicts('discharging_profiles', ((i,j) for i in veh_V2G for j in time_Interval))
     dischargestates=lp.LpVariable.dicts('discharging_states', ((i,j) for i in veh_V2G for j in time_Interval), cat='Binary')
     total_load=lp.LpVariable.dicts('total_load', time_Interval,lowBound=0)
     max_load=lp.LpVariable('max_load', lowBound=0)
     min_load=lp.LpVariable('min_load', lowBound=0)
-
+    
     # define objective function
-    #model += max_load - min_load
-    model +=max_load
-
+    model += max_load 
+    #model +=max_load
+    print('Starting time of V2g---', v2g_startingTime)
+    print('endint time of v2g---', v2g_endingTime)
     # define constraints
     for t in time_Interval: # constraint 1 & 2: to identify the max and min loads
+        print(total_load[t])
         model += total_load[t] <= max_load
         #model += total_load[t] >= min_load
 
@@ -355,7 +362,11 @@ def V2G_optimization():
         temp_start=v2g_startingTime[i]
         temp_end=v2g_endingTime[i]
         if temp_start >= temp_end:
+            print('here')
             for t in range (temp_end):
+                print('charge_states----', chargestates[i,t]*5)
+                print('discharge_states----', dischargestates[i,t].__dict__)
+                
                 model += chargestates[i,t] + dischargestates[i,t] <=1
                 model += chargeprofiles[i,t] <= chargestates[i,t] * power_managed_Uppper
                 model += chargeprofiles[i,t] >= chargestates[i,t] * power_managed_Lower
@@ -374,6 +385,7 @@ def V2G_optimization():
                 model += dischargeprofiles[i, t] >= dischargestates[i, t] * power_V2G_Lower
 
         if temp_start < temp_end:
+            print('here1')
             for t in range(temp_start):
                 model += chargeprofiles[i,t] == 0
                 model += chargestates[i,t] ==0
@@ -528,8 +540,8 @@ if __name__ == '__main__':
     useCase = 1  # 1:residential, 2:office, 3: public, 4: others(user defined)
 
     # initiate the number of vehicles and enrolment of vehicles in V1G
-    n_vehicles = np.int_(800)
-    percentV2G = 0.2
+    n_vehicles = np.int_(150)
+    percentV2G = 1
     percentFast = 0 #out of vehicles using unmanaged charging
     n_V2G_Veh = np.int_(np.round(n_vehicles * percentV2G))
     n_V0G_Veh = np.int_(np.round(n_vehicles * (1 - percentV2G)))
@@ -546,7 +558,7 @@ if __name__ == '__main__':
     batteryRange = 300
 
     #V2G charging power range
-    nslow_Chargers = 80  # number of level 1 chargers
+    nslow_Chargers = 5  # number of level 1 chargers
     nfast_Chargers = 0  # number of level 2 and DCF chargers
     power_managed_Uppper=7
     power_managed_Lower=3
@@ -594,4 +606,4 @@ if __name__ == '__main__':
     #perform total load analysis
     EV_load = loadAnalysis(chargeprofiles, dischargeprofiles, total_load)
 
-    writeExcel(EV_load,total_load)
+    #writeExcel(EV_load,total_load)

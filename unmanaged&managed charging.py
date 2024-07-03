@@ -7,6 +7,7 @@ import re
 from matplotlib import pyplot as plt
 from queue import PriorityQueue
 import pandas as pd
+import json
 
 def user_definedProb(Charge_Freq,values):
     totalFreq = sum(Charge_Freq)
@@ -32,7 +33,7 @@ def user_definedProb(Charge_Freq,values):
 def getArrivalTime(nVech): # starting time is defined by users as an input
     if useCase ==1: #residential
         ###default value and user defined input, e.g., (20,2) to (19, 2.5)
-        arrivalTime = np.random.normal(20, 1, nVech)
+        arrivalTime = np.random.normal(19, 1, nVech)
         return arrivalTime
     if useCase==2:  #office
         ####default value
@@ -112,7 +113,7 @@ def Unmanaged_charge(n_Veh, power, nChargers):
     iterator=range(n_iter)
     Load_maxtrix = np.zeros((n_iter, Maxtime_Interval))
     endSOC=1
-
+    print('unmanaged vehicles---------',n_Veh)
     for it in iterator:
         eLoad=np.zeros(Maxtime_Interval)
 
@@ -166,6 +167,7 @@ def Unmanaged_charge(n_Veh, power, nChargers):
         # print('%4d vehicles uncharged due to lack of slow chargers' %unChargedveh_slow)
 
         for c in range(n_Veh):
+            
             if endTime[c] ==-1 or startingTime[c] ==-1:
                 break
             if endTime[c]>startingTime[c]:
@@ -180,8 +182,10 @@ def Unmanaged_charge(n_Veh, power, nChargers):
                 for t in iterator_time:
                     eLoad[t]=eLoad[t]+power
         Load_maxtrix[it]=eLoad
-
+    
     Load_avg=Load_maxtrix.mean(0)
+    
+    
     Load_var=Load_maxtrix.std(0)
     Load_upper=Load_avg+Load_var*2
     Load_bottom=Load_avg-Load_var*2
@@ -198,10 +202,13 @@ def Unmanaged_usecase(useCase):
 
     if useCase==1:
         Load_avg, Load_bottom, Load_upper, avgwait=Unmanaged_charge(n_slowVeh, power_Slow, nslow_Chargers)
+        
         avgwaitSlow=avgwait
         iterator_time=range(24)
         for t in iterator_time:
+            #print(Load_avg)
             slow_Load_1h_avg[t]=np.average(Load_avg[t*60:(t+1)*60])
+            #print(slow_Load_1h_avg)
         slow_Load_1h_upper=np.zeros(24)
         for t in iterator_time:
             slow_Load_1h_upper[t]=np.average(Load_upper[t*60:(t+1)*60])
@@ -291,9 +298,10 @@ def V1G_optimization(): #this is the function for managed charging
 
     #define optimization variables
     veh_V1G=range(n_V1G_Veh)
+    print('number of vehicles-----',n_V1G_Veh)
     time_Interval=range(24)
 
-    chargeprofiles=lp.LpVariable.dicts('charging_profiles', ((i,j) for i in veh_V1G for j in time_Interval), lowBound=0.1, upBound=power_V1GUppper)
+    chargeprofiles=lp.LpVariable.dicts('charging_profiles', ((i,j) for i in veh_V1G for j in time_Interval))
     chargestates=lp.LpVariable.dicts('charging_states', ((i,j) for i in veh_V1G for j in time_Interval), cat='Binary')
     total_load=lp.LpVariable.dicts('total_load', time_Interval,lowBound=0.1)
     max_load=lp.LpVariable('max_load', lowBound=0)
@@ -350,6 +358,7 @@ def V1G_optimization(): #this is the function for managed charging
                 temp_timer = range (0, t, 1)
                 model += temp_startSOC + lp.lpSum( [chargeprofiles[i,tn] *charge_efficiency/batteryCapacity] for tn in range(temp_start, 24,1)) \
                          + lp.lpSum( [chargeprofiles[i,tn] *charge_efficiency/batteryCapacity] for tn in temp_timer) <=1
+                
             #if end_SOC == 1:
             #    incrementSOC=v1g_distance[i]/batteryRange
             #    model += lp.lpSum([chargeprofiles[i, tn] * charge_efficiency / batteryCapacity] for tn in  range(temp_start, 24, 1)) \
@@ -370,7 +379,7 @@ def V1G_optimization(): #this is the function for managed charging
                 #for t in time_Interval:  # constraint 6: number of chargers available at time interval t
         #model += lp.lpSum([chargestates[i, t]] for i in veh_V1G) <= 400
 
-    #print(model)
+   
     status=model.solve()
     if isManaged==1:
         print(lp.LpStatus[status])
@@ -380,6 +389,7 @@ def V1G_optimization(): #this is the function for managed charging
 
 
 def loadAnalysis(chargeprofiles, total_load): # synthesize of the results
+   
     opt_EVprofiles = np.zeros((n_V1G_Veh, 24))
     for i in chargeprofiles.items():
         name = i[1].name
@@ -388,7 +398,7 @@ def loadAnalysis(chargeprofiles, total_load): # synthesize of the results
         veh_index = index[0]
         time_index = index[1]
         opt_EVprofiles[veh_index][time_index] = i[1].varValue
-
+       
     opt_EVload = np.zeros(24)
     for i in range(24):
         opt_EVload[i] = sum(row[i] for row in opt_EVprofiles)
@@ -496,30 +506,30 @@ def writeExcel(evLoad, opTotal_load):
 
 if __name__ == '__main__':
 
-    useCase=4 # 1:residential, 2:office, 3: commercial, 4: user defined
+    useCase=2 # 1:residential, 2:office, 3: commercial, 4: user defined
     n_vehicles=np.int_(150) # total number of EVs
-    batteryCapacity = 150
-    energyEfficiency = 75  # energy consumption per 100km travelled
+    batteryCapacity = 45
+    energyEfficiency = 15 # energy consumption per 100km travelled
 
     isManaged=1 #unmanaged charging=0 or managed charging=1
-    percentV1G=0.4 #percent of number of vehicles performing managed charging
+    percentV1G=0.8 #percent of number of vehicles performing managed charging
     if isManaged==0:
         percentV1G=0
-    power_V1GLower = 10 #upper power limit for managed charging
-    power_V1GUppper= 40 #lower power limit for managed charging
+    power_V1GLower = 3 #upper power limit for managed charging
+    power_V1GUppper=20 #lower power limit for managed charging
 
     if useCase==1: #residential
         percentFast = 0  # out of vehicles for Unmanaged Charging, how many vehicles are fast-charging vehicles
-        nslow_Chargers = 800  # unmanaged chargers: number of level 1 chargers
-        nfast_Chargers = 800 #unmanaged chargers: number of level 2 and DCF chargers
-        power_Slow = 7
+        nslow_Chargers = 150  # unmanaged chargers: number of level 1 chargers
+        nfast_Chargers = 0 #unmanaged chargers: number of level 2 and DCF chargers
+        power_Slow = 3
         power_Fast = 7 #divide line between fast charging power and slow charging power is: 10kW
 
     if useCase==2 or useCase==3: #workplace or public charging stations: fast charging only
         percentFast = 1  # fixed, not an input
         nslow_Chargers = 0  # fixed, not an input
-        nfast_Chargers = 400  # unmanaged chargers: number of level 2 and DCF chargers
-        power_Fast = 10
+        nfast_Chargers = 150  # unmanaged chargers: number of level 2 and DCF chargers
+        power_Fast = 20
 
     if useCase==4: #other case
         ngen_Chargers=60
@@ -557,7 +567,7 @@ if __name__ == '__main__':
     maxEfficiency=0.8 #maximual capacity of transformer
     n_iter=25   #number of iterations for the unmanaged model
     Maxtime_Interval=1440 #time interval for unmanaged model
-    isSlow=1
+    isSlow=2
 
     batteryRange = batteryCapacity / energyEfficiency * 100
     n_V1G_Veh=np.int_(np.round(n_vehicles*percentV1G))
@@ -569,8 +579,10 @@ if __name__ == '__main__':
         nfast_Chargers=n_fastVeh
     if nslow_Chargers > n_slowVeh:
         nslow_Chargers=n_slowVeh
-    if ngen_Chargers > n_fastVeh: #add this line
-        ngen_Chargers=n_fastVeh #add this line
+# =============================================================================
+#     if ngen_Chargers > n_fastVeh: #add this line
+#         ngen_Chargers=n_fastVeh #add this line
+# =============================================================================
 
     if percentFast>0:
         isSlow=2
@@ -582,13 +594,14 @@ if __name__ == '__main__':
     #unmanaged charging function
     avgwaitSlow, avgwaitFast, avgwaitGen=Unmanaged_usecase(useCase)
     unmanaged_Load=slow_Load_1h_avg+fast_Load_1h_avg + gen_Load_1h_avg
+    print(unmanaged_Load)
     print('start managed charging')
 
     if isManaged ==1:
         v1g_startingTime, v1g_endingTime,v1g_startingSOC=initiate_V1G(n_V1G_Veh) #initiate V1G vehicles' states
 
     chargeprofiles, total_load=V1G_optimization()  #optimize EV charging profiles
-
+    
     EV_load, opTotal_load=loadAnalysis(chargeprofiles, total_load)
 
-    writeExcel(EV_load,opTotal_load)
+    #writeExcel(EV_load,opTotal_load)
