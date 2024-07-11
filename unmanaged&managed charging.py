@@ -33,14 +33,16 @@ def user_definedProb(Charge_Freq,values):
 def getArrivalTime(nVech): # starting time is defined by users as an input
     if useCase ==1: #residential
         ###default value and user defined input, e.g., (20,2) to (19, 2.5)
-        arrivalTime = np.random.normal(19, 1, nVech)
+        arrivalTime = np.random.normal(20, 2, nVech)
+        
         return arrivalTime
     if useCase==2:  #office
         ####default value
         arrivalTime = np.random.lognormal(2.32274, 0.301833, nVech)
         return arrivalTime
         #### user defined input: e.g., (9,2) to (8.5, 1.5)
-        arrivalTime = np.random.normal(9, 2, nVech)
+        #arrivalTime = np.random.normal(9, 2, nVech)
+        #print('--------------arrivalTime---------', arrivalTime)
         return arrivalTime
     if useCase==3: #public
         ####fixed, don't allow for changes
@@ -75,9 +77,11 @@ def getStartingSOC(isSlow, n_Veh): # SOC is defined by charging frequencies
     if isSlow == 1: # slow charge: one charge per day
         dist_list = np.random.lognormal(3.67017251945698, 0.532230403897875, n_Veh)
         startingSOC = 1 - dist_list / batteryRange
+        
         return startingSOC
 
     if isSlow > 1: # fast charge: multiple days per charge
+       
         if useCase==1 or useCase==2: # resiential & office: 'mileages traveled' approach
             dist_list = np.random.lognormal(3.67017251945698, 0.532230403897875, n_Veh)
             for i in range(n_Veh):
@@ -189,7 +193,7 @@ def Unmanaged_charge(n_Veh, power, nChargers):
     Load_var=Load_maxtrix.std(0)
     Load_upper=Load_avg+Load_var*2
     Load_bottom=Load_avg-Load_var*2
-
+    print('-------------------average wait-----------------',avgwait)
     totalsoc=sum(startingSOC)
     print('total unmanaged SOC:', totalsoc)
 
@@ -263,7 +267,7 @@ def initiate_V1G(n_V1G_Veh): # initiate the initial state (including SOC, parkin
     choicelist = [v1g_startingTime, v1g_startingTime - 24]
     startingTime1 = np.select(condlist, choicelist)
     v1g_startingTime = np.int_(np.round(startingTime1))
-
+    print('----starting time----', v1g_startingTime) 
     temp_start = np.int_(np.round(startingTime1))
     temp_park_random = np.zeros(n_V1G_Veh)
     for i in range(n_V1G_Veh):
@@ -276,7 +280,7 @@ def initiate_V1G(n_V1G_Veh): # initiate the initial state (including SOC, parkin
     v1g_endingTime = np.int_(np.round(endingTime1))
 
     # process startingSOC and travel distance for each V1G vehicle
-    v1g_startingSOC = getStartingSOC(2, n_V1G_Veh)
+    #v1g_startingSOC = getStartingSOC(2, n_V1G_Veh)
     v1g_startingSOC = getStartingSOC(isSlow,n_V1G_Veh) ## please use this equation instead
 
     totalsoc=sum(v1g_startingSOC)
@@ -308,8 +312,8 @@ def V1G_optimization(): #this is the function for managed charging
     min_load=lp.LpVariable('min_load', lowBound=0)
 
     # define objective function
-    model += max_load - min_load
-    #model += max_load
+    #model += max_load - min_load
+    model += max_load
 
     # define constraints
     for t in time_Interval: # constraint 1 & 2: to identify the max and min loads
@@ -381,9 +385,10 @@ def V1G_optimization(): #this is the function for managed charging
 
    
     status=model.solve()
+    model.writeLP("v1g.lp")
     if isManaged==1:
         print(lp.LpStatus[status])
-        #print(lp.value(max_load), lp.value(min_load))
+        print(lp.value(max_load), lp.value(min_load))
 
     return chargeprofiles, total_load
 
@@ -398,7 +403,12 @@ def loadAnalysis(chargeprofiles, total_load): # synthesize of the results
         veh_index = index[0]
         time_index = index[1]
         opt_EVprofiles[veh_index][time_index] = i[1].varValue
-       
+    print(opt_EVprofiles)  
+
+    file = open('opt_EVprofles_org.txt','w')
+    for i in range(0,len(opt_EVprofiles)):
+        file.write(str(opt_EVprofiles[i]))
+    file.close()
     opt_EVload = np.zeros(24)
     for i in range(24):
         opt_EVload[i] = sum(row[i] for row in opt_EVprofiles)
@@ -437,7 +447,7 @@ def loadAnalysis(chargeprofiles, total_load): # synthesize of the results
     fig, (ax1, ax2) = plt.subplots(1, 2, sharex=True)
     ax1.set_xlabel('Time of a day: hour')
     ax1.set_ylabel('Load: kW')
-    ax1.fill_between(x, unmanaged_Load, color='whitesmoke', label='EV Load: Unmanaged Charging')
+    ax1.fill_between(x, unmanaged_Load, color='red', label='EV Load: Unmanaged Charging')
     ax1.fill_between(x, opt_EVload, color='lightcyan', label='EV Load: Managed Charging')
     EV_load = opt_EVload + unmanaged_Load
     ax1.plot(x, EV_load, color='orange', lw=3, label='EV Load: Total')
@@ -506,13 +516,13 @@ def writeExcel(evLoad, opTotal_load):
 
 if __name__ == '__main__':
 
-    useCase=2 # 1:residential, 2:office, 3: commercial, 4: user defined
-    n_vehicles=np.int_(150) # total number of EVs
+    useCase=1 # 1:residential, 2:office, 3: commercial, 4: user defined
+    n_vehicles=np.int_(100) # total number of EVs
     batteryCapacity = 45
     energyEfficiency = 15 # energy consumption per 100km travelled
 
     isManaged=1 #unmanaged charging=0 or managed charging=1
-    percentV1G=0.8 #percent of number of vehicles performing managed charging
+    percentV1G=.5 #percent of number of vehicles performing managed charging
     if isManaged==0:
         percentV1G=0
     power_V1GLower = 3 #upper power limit for managed charging
@@ -520,7 +530,7 @@ if __name__ == '__main__':
 
     if useCase==1: #residential
         percentFast = 0  # out of vehicles for Unmanaged Charging, how many vehicles are fast-charging vehicles
-        nslow_Chargers = 150  # unmanaged chargers: number of level 1 chargers
+        nslow_Chargers = 100  # unmanaged chargers: number of level 1 chargers
         nfast_Chargers = 0 #unmanaged chargers: number of level 2 and DCF chargers
         power_Slow = 3
         power_Fast = 7 #divide line between fast charging power and slow charging power is: 10kW
@@ -528,7 +538,7 @@ if __name__ == '__main__':
     if useCase==2 or useCase==3: #workplace or public charging stations: fast charging only
         percentFast = 1  # fixed, not an input
         nslow_Chargers = 0  # fixed, not an input
-        nfast_Chargers = 150  # unmanaged chargers: number of level 2 and DCF chargers
+        nfast_Chargers =100  # unmanaged chargers: number of level 2 and DCF chargers
         power_Fast = 20
 
     if useCase==4: #other case
@@ -594,7 +604,6 @@ if __name__ == '__main__':
     #unmanaged charging function
     avgwaitSlow, avgwaitFast, avgwaitGen=Unmanaged_usecase(useCase)
     unmanaged_Load=slow_Load_1h_avg+fast_Load_1h_avg + gen_Load_1h_avg
-    print(unmanaged_Load)
     print('start managed charging')
 
     if isManaged ==1:
